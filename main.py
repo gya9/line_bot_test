@@ -1,8 +1,6 @@
-# -*- coding: utf-8 -*-
-import os
-import sys
-from account_response import Response
 from flask import Flask, request, abort
+import os
+
 from linebot import (
     LineBotApi, WebhookHandler
 )
@@ -10,72 +8,46 @@ from linebot.exceptions import (
     InvalidSignatureError
 )
 from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, FollowEvent,
+    MessageEvent, TextMessage, TextSendMessage,
 )
-from postgres import Postgres
 
 app = Flask(__name__)
-res = Response()
-pg = Postgres()
 
-pg.create_table()
+#環境変数取得
+YOUR_CHANNEL_ACCESS_TOKEN = 'xZFSzUCoXozvbknapE+X5+V1GxLzviI23ubydowTMtyDzizfJCG6drkksG4kvc9SEs/wKEb+PRoEXToKFBTdpVZwk0SM5uygQg9yfwNUUP5DUaqSMi82ETfGwX3t7mFD0qvLKst+Otja/3I0LZEeSwdB04t89/1O/w1cDnyilFU='
+YOUR_CHANNEL_SECRET = '42b3bcbd5c2217b0d8fcc1732e685b64'
 
-# Herokuの変数からトークンなどを取得
-channel_secret = os.environ['LINE_CHANNEL_SECRET']
-channel_access_token = os.environ['LINE_CHANNEL_ACCESS_TOKEN']
-if channel_secret is None:
-    print('Specify LINE_CHANNEL_SECRET as environment variable.')
-    sys.exit(1)
-if channel_access_token is None:
-    print('Specify LINE_CHANNEL_ACCESS_TOKEN as environment variable.')
-    sys.exit(1)
+line_bot_api = LineBotApi(YOUR_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(YOUR_CHANNEL_SECRET)
 
-line_bot_api = LineBotApi(channel_access_token)
-handler = WebhookHandler(channel_secret)
+@app.route("/")
+def hello_world():
+    return "hello world!"
 
-# LINEからのWebhook
-@app.route("/callback", methods = ['POST'])
+@app.route("/callback", methods=['POST'])
 def callback():
-    # リクエストヘッダーから署名検証のための値を取得
+    # get X-Line-Signature header value
     signature = request.headers['X-Line-Signature']
-    
-    # リクエストボディを取得
-    body = request.get_data(as_text = True)
+
+    # get request body as text
+    body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
 
-    # 署名を検証し、問題なければhandleに定義されている関数を呼び出す。
+    # handle webhook body
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
+
     return 'OK'
 
-# フォローされたらDBへユーザー情報登録
-@handler.add(FollowEvent)
-def handle_follow(event):
-    if not pg.is_user_exists(event.source.user_id):
-        pg.register_user(event.source.user_id)
-
-"""
-LINEでMessageEvent（普通のメッセージを送信された場合）が起こった場合
-reply_messageの第一引数のevent.reply_tokenは、イベントの応答に用いるトークンです。 
-第二引数には、linebot.modelsに定義されている返信用のTextSendMessageオブジェクトを渡しています。
-"""
-@handler.add(MessageEvent, message = TextMessage)
+@handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    
-    # 入力された内容(event.message.text)に応じて返信する
     line_bot_api.reply_message(
-    event.reply_token,
-    TextSendMessage(text = os.environ[res.getResponse(event.message.text)])
-    )
-    
-def push_message():
-    try:
-        line_bot_api.push_message('<to>', TextSendMessage(text='Hello World!'))
-    except LineBotApiError as e:
-        pass
+        event.reply_token,
+        TextSendMessage(text=event.message.text))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
-    
+   app.run()
+    # port = int(os.getenv("PORT"))
+    # app.run(host="0.0.0.0", port=port)
